@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Login</title>
+  <style>
+    body{font-family: Arial; background:#f6f8fb; padding:24px}
+    .card{max-width:420px;margin:40px auto;background:#fff;padding:20px;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,0.06)}
+    input,button{width:100%;padding:10px;margin:8px 0;border-radius:6px;border:1px solid #ccc}
+    button{background:#0b74ff;color:#fff;border:none}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Login</h2>
+    <input id="uid" placeholder="Your ID">
+    <input id="password" type="password" placeholder="Password">
+    <button id="loginBtn">Login</button>
+    <p style="font-size:13px;color:#666">Don't have an ID? <a href="signup.html">Sign up</a></p>
+  </div>
+
+  <script src="shared.js"></script>
+  <script>
+    document.getElementById('uid').value = localStorage.getItem('userId')||'';
+    document.getElementById('loginBtn').onclick = async () => {
+      const phone = document.getElementById('uid').value;
+      const password = document.getElementById('password').value;
+      if (!phone || !password) return alert('Enter ID and password');
+      const res = await api('login','POST',{phone, password});
+      if (res.token) {
+        token = res.token;
+        localStorage.setItem('token', token);
+        localStorage.setItem('userId', res.id);
+        alert('Logged in');
+        window.location = 'public.html';
+      } else {
+        alert('Login failed: ' + JSON.stringify(res));
+      }
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Private Broadcast</title>
+  <style>
+    body{font-family: Arial;padding:16px;background:#f6f8fb}
+    .card{max-width:900px;margin:16px auto;background:#fff;padding:16px;border-radius:10px}
+    .chat{height:300px;overflow:auto;border:1px solid #eee;padding:8px;border-radius:8px;background:#fafafa}
+    input,button{padding:10px;margin-top:8px;width:100%;box-sizing:border-box}
+    video{width:100%;border-radius:8px;background:#000}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Private Broadcast (P2P)</h2>
+    <input id="keyInput" placeholder="Enter private entry key or use saved">
+    <button id="joinBtn">Join Private Room</button>
+    <div id="chat" class="chat"></div>
+    <input id="msg" placeholder="Private message">
+    <button id="send">Send Private</button>
+
+    <hr>
+    <div>
+      <video id="localVideo" autoplay muted playsinline></video>
+      <video id="remoteVideo" autoplay playsinline></video>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.1/socket.io.min.js"></script>
+  <script src="shared.js"></script>
+  <script>
+    token = localStorage.getItem('token');
+    if (!token) location.href = 'login.html';
+    const socket = io(API_BASE, { path: '/socket.io' });
+    const chat = document.getElementById('chat');
+    let currentKey = localStorage.getItem('entryKey') || '';
+
+    document.getElementById('keyInput').value = currentKey;
+
+    let pc;
+
+    socket.on('connect', () => socket.emit('auth', token));
+    socket.on('private-message', (m) => {
+      const p = document.createElement('div');
+      p.textContent = m.from + ': ' + m.text;
+      chat.appendChild(p);
+      chat.scrollTop = chat.scrollHeight;
+    });
+
+    socket.on('private-signal', async (data) => {
+      if (!pc) return;
+      if (data.payload.sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.payload.sdp));
+        if (data.payload.sdp.type === 'offer') {
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.emit('private-signal', { to: data.from, payload: { sdp: pc.localDescription } });
+        }
+      } else if (data.payload.candidate) {
+        try { await pc.addIceCandidate(data.payload.candidate); } catch(e){ console.error(e); }
+      }
+    });
+
+    document.getElementById('joinBtn').onclick = () => {
+      const k = document.getElementById('keyInput').value.trim();
+      if (!k) return alert('Enter key');
+      currentKey = k;
+      socket.emit('join-private', k);
+      alert('Joined private room: ' + k);
+      startPrivateVideo();
+    };
+
+    document.getElementById('send').onclick = () => {
+      if (!currentKey) return alert('Join a private room first');
+      const t = document.getElementById('msg').value;
+      socket.emit('private-message', { key: currentKey, text: t });
+      document.getElementById('msg').value = '';
+    };
+
+    async function startPrivateVideo() {
+      const localVideo = document.getElementById('localVideo');
+      const remoteVideo = document.getElementById('remoteVideo');
+      const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+      localVideo.srcObject = stream;
+
+      pc = new RTCPeerConnection();
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      pc.ontrack = event => { remoteVideo.srcObject = event.streams[0]; };
+      pc.onicecandidate = e => {
+        if (e.candidate) socket.emit('private-signal', { to: currentKey, payload: { candidate: e.candidate } });
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.emit('private-signal', { to: currentKey, payload: { sdp: offer } });
+    }
+  </script>
+</body>
+</html>
